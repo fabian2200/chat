@@ -50,9 +50,13 @@ export const userService = {
     obtenerNumeroMensajesRecibidos: async (id) => {
         const response = await http().get('/numero-mensajes-recibidos?id=' + id);
         return response.data;
+    },
+
+    obtenerMiUsuario: async (id) => {
+        const response = await http().get('/mi-usuario?id=' + id);
+        return response.data;
     }
 }; 
-
 
 export const chatService = {
     obtenerChatsUsuario: async (id) => {
@@ -107,7 +111,7 @@ export const chatService = {
 
        const response = await http().post('/enviar-mensaje-difusion', formData, { headers });
        return response.data;
-    }
+    },
 }; 
 
 export const grupoService = {
@@ -161,6 +165,31 @@ export const grupoService = {
         id_participantes = id_participantes.join(',');
         const response = await http().post('/agregar-participantes', { id_crea, id_grupo, id_participantes });
         return response.data;
+    },
+    editarGrupo: async (id_grupo, nombre) => {
+        const response = await http().post('/editar-grupo', { id_grupo, nombre });
+        return response.data;
+    },
+    guardarMensajeRespondiendo: async (id_crea, id_grupo, mensaje, tipo, archivo, usuario_respondiendo, mensaje_respondiendo, id_mensaje_respondiendo) => {
+        const formData = new FormData();
+        formData.append('id', id_crea);
+        formData.append('grupo_id', id_grupo);
+        formData.append('mensaje', mensaje);
+        formData.append('tipo', tipo);
+        formData.append('usuario_respondiendo', usuario_respondiendo);
+        formData.append('mensaje_respondiendo', mensaje_respondiendo);
+        formData.append('id_mensaje_respondiendo', id_mensaje_respondiendo);
+
+        if (tipo == 'archivo') {
+            formData.append('archivo', archivo);
+        }
+
+        const headers = {
+            'Content-Type': 'multipart/form-data'
+        }
+
+        const response = await http().post('/guardar-mensaje-respondiendo', formData, { headers });
+        return response.data;
     }
 }
 
@@ -207,6 +236,10 @@ export const authService = {
         formData.append('avatar', avatar);
 
         const response = await http().post('/register', formData);
+        return response.data;
+    },
+    recoverPassword: async (email) => {
+        const response = await http().post('/recuperar-contrasena', { email });
         return response.data;
     }
 }

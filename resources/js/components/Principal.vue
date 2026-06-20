@@ -84,7 +84,9 @@ export default {
             numero_mensajes_recibidos_grupo: 0,
             usuario: null,
             updateInterval: null,
-            baseUrl: baseUrl
+            baseUrl: baseUrl,
+            permisoConcedido: false,
+            primera_vez: true,
         }
     },
     async mounted() {
@@ -94,54 +96,81 @@ export default {
         }else {
             this.verificarRuta();
             this.verificarPrimeraVez();
+            this.pedirPermiso();
             this.updateInterval = setInterval(() => {
                 this.consultarNumeroMensajes();
-            }, 5000);
+            }, 3000);
         }
+
+        document.addEventListener("visibilitychange", this.manejarVisibilidadPestaña);
     },
     methods: {
+        async pedirPermiso() {
+            if (!("Notification" in window)) {
+                alert("Tu navegador no soporta notificaciones.");
+                return;
+            }
+            const permiso = await Notification.requestPermission();
+            this.permisoConcedido = permiso === "granted";
+        },
+        enviarNotificacion(mensaje) {
+            if (document.hidden ) {
+                document.title = "📩 Nuevos mensajes";
+                if(this.permisoConcedido){
+                    let url_imagen = window.location.origin + "/chat-empresarial/public/images/logo.ico";
+                    console.log(url_imagen);
+                    new Notification("Notificación Chat Empresarial ✅", {
+                        body: mensaje,
+                        icon: url_imagen,
+                        title: "notificacion de prueba"
+                    });
+                }
+            }
+        },
+        manejarVisibilidadPestaña() {
+            if (!document.hidden) {
+                document.title = "Chat - Empresarial";
+            }
+        },
         async consultarNumeroMensajes() {
             const response = await userService.obtenerNumeroMensajesRecibidos(this.usuario.id);
             if(response.status === 'success') {
                 var m_r = response.numero_mensajes_recibidos_chat;
-                if(m_r > 0) {
-                    this.notificarMensajesChat(m_r);
-                }
-
                 var m_r_grupo = response.numero_mensajes_recibidos_grupo;
-                if(m_r_grupo > 0) {
+
+                if(this.primera_vez) {
+                    this.primera_vez = false;
+                    this.numero_mensajes_recibidos_chat = m_r;
+                    this.numero_mensajes_recibidos_grupo = m_r_grupo;
+
+                    console.log("Mensajes iniciales chat: "+ this.numero_mensajes_recibidos_chat);
+                    console.log("Mensajes iniciales grupo: "+ this.numero_mensajes_recibidos_grupo);
+                }else{
+                    this.notificarMensajesChat(m_r);
                     this.notificarMensajesGrupo(m_r_grupo);
                 }
             }
         },
         notificarMensajesChat(m_r) {
-            if(this.numero_mensajes_recibidos_chat != 0) {
-                if(this.numero_mensajes_recibidos_chat != m_r) {
+            if(this.numero_mensajes_recibidos_chat != m_r) {
                 this.numero_mensajes_recibidos_chat = m_r;
-                console.log("nuevo mensaje, ahora con: "+ this.numero_mensajes_recibidos_chat);
+                console.log("Nuevo mensaje en chat: "+ this.numero_mensajes_recibidos_chat);
                 var audio = new Audio(this.baseUrl+'sounds/sound.mp3');
                 audio.play();
-                }else{
-                console.log("sigue siendo el mismo: "+ this.numero_mensajes_recibidos_chat);
-                }
+                this.enviarNotificacion("Tienes un nuevo mensaje 📩");
             }else{
-                this.numero_mensajes_recibidos_chat = m_r;
-                console.log("entro inicialmente con: "+ this.numero_mensajes_recibidos_chat);
+                console.log("Mismos mensajes en chat: "+ this.numero_mensajes_recibidos_chat);
             }
         },
         notificarMensajesGrupo(m_r) {
-            if(this.numero_mensajes_recibidos_grupo != 0) {
-                if(this.numero_mensajes_recibidos_grupo != m_r) {
+            if(this.numero_mensajes_recibidos_grupo != m_r) {
                 this.numero_mensajes_recibidos_grupo = m_r;
-                console.log("nuevo mensaje grupo, ahora con: "+ this.numero_mensajes_recibidos_grupo);
+                console.log("Nuevo mensaje en grupo: "+ this.numero_mensajes_recibidos_grupo);
                 var audio = new Audio(this.baseUrl+'sounds/sound_2.mp3');
                 audio.play();
-                }else{
-                console.log("sigue siendo el mismo grupo: "+ this.numero_mensajes_recibidos_grupo);
-                }
+                this.enviarNotificacion("Tienes un nuevo mensaje en un grupo 📫");
             }else{
-                this.numero_mensajes_recibidos_grupo = m_r;
-                console.log("entro grupo inicialmente con: "+ this.numero_mensajes_recibidos_grupo);
+                console.log("Mismos mensajes en grupo: "+ this.numero_mensajes_recibidos_grupo);
             }
         },
         verificarLogin() {

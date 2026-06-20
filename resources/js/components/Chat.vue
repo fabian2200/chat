@@ -76,18 +76,19 @@
                 <small v-if="chat.mensajes_sin_leer > 0" class="badge bg-danger ms-2 numero_mensajes">
                   <i style="margin-right: 3px;" class="bi bi-chat-dots"></i> {{ chat.mensajes_sin_leer }}
                 </small>
-                <small class="text-muted">{{ chat.empresa }}</small>
-                <br>
-                <small class="mb-0">
+                <small class="mb-0" style="font-size: 14px;">
                   {{ chat.nombre }} 
                   <span :class="chat.online ? 'badge bg-success text-black' : 'badge bg-warning text-black'">
                     {{ chat.online ? 'En línea' : chat.last_seen }}
                   </span>
                 </small>
                 <br>
-                <small class="text-muted" style="font-size: 10px;">
-                  Creado el {{ chat.fecha_chat }} a las {{ chat.hora_chat }} 
-                </small>
+                <div style="margin-top: 5px;">
+                  <p class="text-muted" style="font-size: 11px; margin-bottom: 0px;">{{ chat.empresa }}</p>
+                  <p class="text-muted" style="font-size: 10px; margin-bottom: 0px;">
+                    Creado el {{ chat.fecha_chat }} a las {{ chat.hora_chat }} 
+                  </p>
+                </div>
               </div>
               <small class="text-muted">{{ chat.lastMessageTime }}</small>
             </div>
@@ -137,9 +138,18 @@
           <!-- Área de mensajes -->
           <div 
             class="chat-messages p-3 overflow-auto"
-            :style="esDispositivoMovil ? 'height: calc(100vh - 20vh); overflow-x: hidden !important;' : 'height: calc(100vh - 186px);'"
+            :style="esDispositivoMovil ? 'height: calc(100vh - 20vh); overflow-x: hidden !important;' : 'height: calc(100vh - 118px - ' + altura_editable + 'px);'"
             ref="messageContainer"
           >
+            <div 
+              ref="dropChats"
+              v-if="isDragging" class="drag-overlay"
+              @dragover.prevent="handleDragOver"
+              @drop="handleDrop"
+            >
+              Suelta los archivos aquí 📂
+            </div>
+
             <div 
               v-for="message in messages" 
               :key="message.id"
@@ -149,7 +159,7 @@
               <div 
                 class="message d-inline-block p-3"
                 :class="[
-                  message.is_mine ? 'message-mine bg-primary text-white' : 'message-other bg-white',
+                  message.is_mine ? 'message-mine bg-primary text-white p-3' : 'message-other bg-white p-3',
                   {'rounded-bottom-end-0': message.is_mine},
                   {'rounded-bottom-start-0': !message.is_mine}
                 ]"
@@ -161,7 +171,7 @@
                 <div v-else style="position: absolute; left: -27px; top: 0px; z-index: 99;">
                     <img :src="baseUrl+'images/other.png'" style="width: 30px; height: 50px;">
                 </div>
-                <p :style="message.is_mine ? 'color: white;' : 'color: black;'" class="mb-1">{{ message.mensaje }}</p>
+                <p v-html="message.mensaje" :style="message.is_mine ? 'color: white;' : 'color: black;'" class="mb-1 texto_en_html"></p>
                 
                 <!-- Modificar vista previa del archivo -->
                 <div v-if="message.tiene_archivo === 1" class="file-preview mb-2">
@@ -193,18 +203,22 @@
 
           <!-- Área de entrada de mensaje -->
           <div class="chat-input p-3" style="background-color: #f1ede6 !important;">
-            <div class="input-group">
+            <div class="input-group" style="align-items: center;">
               <button style="padding: 0px !important; border-color: #f1ede6 !important; background-color: #f1ede6 !important;" class="btn btn-light" @click="openFileExplorer">
                 <i class="bi bi-plus-lg" style="color: grey; font-size: 1.5rem;"></i>
               </button>
-              <form @submit.prevent="guardarMensaje('texto')" autocomplete="off" :style="esDispositivoMovil ? 'flex-grow: 0; width: 72%; margin-right: 10px;' : 'flex-grow: 1;'">
-                <input
+              <form @submit.prevent="guardarMensaje('texto')" 
+                @keydown.enter.exact.prevent="guardarMensaje('texto')"
+                autocomplete="off" 
+                :style="esDispositivoMovil ? 'flex-grow: 0; width: 72%; margin-right: 10px;' : 'flex-grow: 1; width: 93%;'">
+                <div contenteditable="true" @input="updateText" ref="editableDiv" class="editable"></div>
+                <!-- <input
                   style="border: 1px solid #c3c3c3; width: 98%;"
                   type="text" 
                   class="form-control mx-2" 
                   placeholder="Escribe un mensaje..."
                   v-model="newMessage"
-                >
+                > -->
               </form>
               <button 
                 class="btn btn-primary rounded-circle"
@@ -454,12 +468,14 @@
 
             <!-- Área de mensaje -->
             <div class="mb-3">
-              <textarea 
-                class="form-control" 
-                v-model="broadcastMessage" 
-                rows="3" 
-                placeholder="Escribe tu mensaje..."
-              ></textarea>
+              <label for="broadcastMessage" class="form-label">Mensaje</label>
+              <div 
+                class="editable" 
+                contenteditable="true" 
+                @input="updateBroadcastMessage" 
+                ref="editableDivBroadcast"
+                style="border: 1px solid #c3c3c3; width: 100%; height: 100px !important; margin: 0px !important;"
+              ></div>
             </div>
 
             <!-- Área de archivo -->
@@ -503,6 +519,31 @@
       class="d-none" 
       @change="handleBroadcastFileSelected"
     >
+
+
+    <!-- Modal Bootstrap para archivos arrastrados -->
+    <div class="modal fade" id="fileModalCopy" tabindex="-1" aria-labelledby="fileModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="fileModalLabel">Archivos Cargados</h5>
+          </div>
+          <div class="modal-body">
+            <ul class="list-group">
+              <li v-for="(file, index) in files" :key="index" class="list-group-item d-flex justify-content-between align-items-center">
+                {{ file.name }} ({{ formatSize(file.size) }})
+                <button class="btn btn-light btn-sm" @click="removeFile(index)">❌</button>
+              </li>
+            </ul>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-danger" @click="files = []" data-bs-dismiss="modal">Cancelar <i class="bi bi-x"></i></button>
+            <button type="button" class="btn btn-success" @click="sendFiles">Enviar <i class="bi bi-send"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -563,7 +604,11 @@ export default {
       availableUsersDifusion: [],
       baseUrl: baseUrl,
       isLoading: false,
-      esDispositivoMovil: false
+      esDispositivoMovil: false,
+      erroresArchivo: [],
+      altura_editable: 78,
+      isDragging: false,
+      files: [],
     }
   },
   methods: {
@@ -708,75 +753,85 @@ export default {
     async handleFileSelected(event) {
       const files = event.target.files;
       if (files.length > 0) {
+        this.isLoading = true;
         const maxFileSize = 100 * 1024 * 1024;
-        
-        if (files[0].size > maxFileSize) {
-          Swal.fire({
-            icon: 'error',
-            title: 'Archivo demasiado grande',
-            text: 'El archivo no debe pesar más de 100 MB.',
-            showConfirmButton: false, 
-            timer: 2500
-          });
-          this.$refs.fileInput.value = '';
-          return;
+        for(var i = 0; i < files.length; i++){
+          if (files[i].size > maxFileSize) {
+            this.erroresArchivo.push('<li style="color: red;">'+ files[i].name+' es demasiado grande, el tamaño máximo es de 100 MB</li>');
+          }else{
+            this.archivo = files[i];
+            await this.guardarMensajeArchivo('archivo', this.archivo);
+          }
         }
 
-        this.archivo = files[0];
-        await this.guardarMensaje('archivo');
+        var mensaje_swal = '<ul>';
+        for(var i = 0; i < this.erroresArchivo.length; i++){
+          mensaje_swal += this.erroresArchivo[i];
+        }
+        mensaje_swal += '</ul>';
+
+        Swal.fire({
+          icon: 'warning',
+          title: 'Atención',
+          html: mensaje_swal,
+          showConfirmButton: true, 
+          confirmButtonText: 'Cerrar',
+          confirmButtonColor: '#3085d6',
+        });
+
+        this.isLoading = false;
+        this.erroresArchivo = [];
         this.$refs.fileInput.value = '';
       }
+    },
+    async guardarMensajeArchivo(tipo, archivo) {
+      const id_mio = localStorage.getItem('id_mio');
+      const id_chat = localStorage.getItem('id_chat');
+      const mensaje = this.newMessage;
+      
+      try { 
+        let response = await chatService.guardarMensaje(id_mio, id_chat, mensaje, tipo, this.archivo);
+        if (response.success == false) {
+          this.erroresArchivo.push('<li style="color: red;">'+response.message+'</li>');
+        }else{
+          this.erroresArchivo.push('<li style="color: green;">'+archivo.name+' subido correctamente</li>');
+        }
+      } catch (error) {
+        this.erroresArchivo.push(error.response.statusText == 'Content Too Large' ? '<li style="color: red;">El archivo '+this.archivo.name+' es demasiado grande</li>' : '<li style="color: red;">'+error.response.statusText+'</li>');
+      }       
     },
     async guardarMensaje(tipo) {
       const id_mio = localStorage.getItem('id_mio');
       const id_chat = localStorage.getItem('id_chat');
-      const mensaje = this.newMessage;
-      let response;
-      if (tipo == 'archivo') {
-        this.isLoading = true;
-
-        try { 
-          response = await chatService.guardarMensaje(id_mio, id_chat, mensaje, tipo, this.archivo);
-          if (response.success) {
-            this.isLoading = false;
-          } else {
-            this.isLoading = false;
-            Swal.fire({
-              icon: 'error',
-              title: 'Oops...',
-              text: response.message,
-              showConfirmButton: false, 
-              timer: 2500
-            });
-          }
-        } catch (error) {
-          this.isLoading = false;
+     
+      const vacio = this.$refs.editableDiv.textContent.trim();
+      
+      if(vacio != ''){ 
+        const mensaje = this.newMessage;
+        let response = await chatService.guardarMensaje(id_mio, id_chat, mensaje, tipo, null); 
+        if (response.success) {
+          this.newMessage = '';
+          this.$refs.editableDiv.innerHTML = '';
+          this.altura_editable = 78;
+          await this.loadMessages();
+          await this.loadChats();
+          this.scrollToBottom();
+        } else {
           Swal.fire({
             icon: 'error',
             title: 'Oops...',
-            text: error.response.statusText == 'Content Too Large' ? 'El archivo es demasiado grande' : error.response.statusText,
-            showConfirmButton: false, 
-            timer: 2500
+            text: response.message
           });
-        }       
-      } else {
-        response = await chatService.guardarMensaje(id_mio, id_chat, mensaje, tipo, null);
-      }
-      
-      if (response.success) {
-        this.newMessage = '';
-        
-        await this.loadMessages();
-        await this.loadChats();
-        this.scrollToBottom();
-      } else {
+        }
+      }else{
         Swal.fire({
           icon: 'error',
           title: 'Oops...',
-          text: response.message
+          text: 'No se puede enviar un mensaje vacío',
+          showConfirmButton: false, 
+          timer: 2500
         });
       }
-
     },
     openFileModal(fileName) {
       this.selectedFile = fileName;
@@ -829,6 +884,7 @@ export default {
       if (this.broadcastModal) {
         this.broadcastModal.hide();
         this.broadcastMessage = '';
+        this.$refs.editableDivBroadcast.innerHTML = '';
         this.selectedUsers = [];
         this.broadcastFile = null;
       }
@@ -847,29 +903,40 @@ export default {
       this.availableUsersDifusion = this.users.filter(user => user.name.toLowerCase().includes(this.broadcastSearchQuery.toLowerCase()));
     },
     async sendBroadcastMessage() {
-      try {
-        
-        const response = await chatService.enviarMensajeDifusion(this.yo.id, this.selectedUsers.join(','), this.broadcastMessage, this.broadcastFile);
+      this.isLoading = true;
+      const mensaje = this.$refs.editableDivBroadcast.textContent.trim();
 
-        if (response.success) {
-          Swal.fire({
-            icon: 'success',
-            title: '¡Éxito!',
-            text: 'Mensaje de difusión enviado correctamente'
-          });
-          this.closeBroadcastModal();
-
-          this.loadChats();
-        } else {
-          throw new Error(response.message);
-        }
-      } catch (error) {
+      if(mensaje == ''){
         Swal.fire({
           icon: 'error',
-          title: 'Error',
-          text: 'No se pudo enviar el mensaje de difusión'
+          title: 'Oops...',
+          text: 'No se puede enviar un mensaje vacío',
         });
-      }
+      } else {
+        try {
+          const response = await chatService.enviarMensajeDifusion(this.yo.id, this.selectedUsers.join(','), this.broadcastMessage, this.broadcastFile);
+          if (response.success) {
+            this.isLoading = false;
+            Swal.fire({
+              icon: 'success',
+              title: '¡Éxito!',
+              text: 'Mensaje de difusión enviado correctamente'
+            });
+            this.closeBroadcastModal();
+            this.loadChats();
+          } else {
+            this.isLoading = false;
+            throw new Error(response.message);
+          }
+        } catch (error) {
+          this.isLoading = false;
+          Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'No se pudo enviar el mensaje de difusión'
+            });
+          }
+        }
     },
     buscarContactosChats() {
       console.log(this.chats);
@@ -907,6 +974,88 @@ export default {
         this.$refs.chatContainer.style.display = 'none'; 
         this.$refs.listaContactosContainer.style.display = 'block';
       }
+    },
+    updateText(event) {
+      this.altura_editable = this.$refs.editableDiv.offsetHeight + 32;
+      this.newMessage = event.target.innerHTML;
+    },
+    updateBroadcastMessage(event) {
+      this.broadcastMessage = event.target.innerHTML;
+    },
+    handleWindowDragEnter(event) {
+      if (event.dataTransfer.types.includes("Files")) {
+        this.isDragging = true;
+      }
+    },
+    handleWindowDragLeave(event) {
+      if (event.clientY <= 0 || event.clientX <= 0 || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight) {
+        this.isDragging = false;
+      }
+    },
+    handleDragOver(event) {
+      event.preventDefault();
+    },
+    handleDrop(event) {
+      event.preventDefault();
+      this.isDragging = false;
+
+      if (!this.$refs.dropChats || !this.$refs.dropChats.contains(event.target)) {
+          alert('No se puede enviar archivos fuera del chat');
+          return;
+      }
+
+      const droppedFiles = Array.from(event.dataTransfer.files);
+      this.files = [...this.files, ...droppedFiles];
+
+      const modal = new bootstrap.Modal(document.getElementById('fileModalCopy'));
+      modal.show();
+    },
+    removeFile(index) {
+      this.files.splice(index, 1);
+    },
+    formatSize(size) {
+      return (size / 1024).toFixed(2) + " KB";
+    },
+    async sendFiles() {
+      const modal = bootstrap.Modal.getInstance(document.getElementById('fileModalCopy'));
+      modal.hide();
+      const files = this.files;
+      if (files.length > 0) {
+        this.isLoading = true;
+        const maxFileSize = 100 * 1024 * 1024;
+        for(var i = 0; i < files.length; i++){
+          if (files[i].size > maxFileSize) {
+            this.erroresArchivo.push('<li style="color: red;">'+ files[i].name+' es demasiado grande, el tamaño máximo es de 100 MB</li>');
+          }else{
+            this.archivo = files[i];
+            await this.guardarMensajeArchivo('archivo', this.archivo);
+          }
+        }
+
+        var mensaje_swal = '<ul>';
+        for(var i = 0; i < this.erroresArchivo.length; i++){
+          mensaje_swal += this.erroresArchivo[i];
+        }
+        mensaje_swal += '</ul>';
+
+        Swal.fire({
+          icon: 'warning',
+          title: 'Atención',
+          html: mensaje_swal,
+          showConfirmButton: true, 
+          confirmButtonText: 'Cerrar',
+          confirmButtonColor: '#3085d6',
+        });
+
+        this.isLoading = false;
+        this.erroresArchivo = [];
+        this.files = [];
+        await this.loadMessages();
+        await this.loadChats();
+        this.$nextTick(() => {
+          this.scrollToBottom();
+        });
+      }
     }
   },
   watch: {
@@ -943,9 +1092,23 @@ export default {
         return new bootstrap.Tooltip(tooltipTriggerEl);
       });
     }
+
+    window.addEventListener("dragenter", this.handleWindowDragEnter);
+    window.addEventListener("dragleave", this.handleWindowDragLeave);
+    window.addEventListener("dragover", (event) => event.preventDefault());
+    window.addEventListener("drop", (event) => {
+      this.isDragging = false;
+      event.preventDefault(); // Previene la apertura del archivo en otra pestaña
+    });
   },
   beforeUnmount() {
     this.stopAutoUpdate();
+    window.removeEventListener("dragenter", this.handleWindowDragEnter);
+    window.removeEventListener("dragleave", this.handleWindowDragLeave);
+    window.removeEventListener("dragover", (event) => event.preventDefault());
+    window.removeEventListener("drop", (event) => {
+      event.preventDefault(); // Previene la apertura del archivo en otra pestaña
+    });
   },
 }
 </script>
@@ -980,15 +1143,47 @@ export default {
 
 .message-mine {
   margin-right: 1.5%;
-  border-radius: 15px 0px 15px 15px !important;
-  background: linear-gradient(135deg, #007bff, #0056b3);
+    border-radius: 15px 0px 15px 15px !important;
+    background: linear-gradient(to right, #007bff, #0061ca);
+}
+
+.message-mine .texto_en_html ::v-deep(p){
+  margin-bottom: 0px !important;
+  color: white !important;
+  font-size: 14px !important;
+  text-align: left !important;
+  text-indent: 0pt !important;
+}
+
+.message-mine .texto_en_html ::v-deep(span){
+  color: white !important;
+}
+
+.message-mine .texto_en_html ::v-deep(strong){
+  color: white !important;
 }
 
 .message-other {
   margin-left: 1.5%;
   border-radius: 0px 15px 15px 15px !important;
   background-color: rgb(170, 198, 252);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(63, 63, 63, 0.1);
+}
+
+.message-other .texto_en_html ::v-deep(p){
+  margin-bottom: 0px !important;
+  color: rgb(54, 54, 54) !important;
+  font-size: 14px !important;
+  text-align: left !important;
+  text-indent: 0pt !important;
+}
+
+.message-other .texto_en_html ::v-deep(span){
+  color: rgb(54, 54, 54) !important;
+}
+
+.message-other .texto_en_html ::v-deep(strong){
+  color: rgb(54, 54, 54) !important;
 }
 
 /* Estilizar scrollbar */
@@ -1074,5 +1269,45 @@ export default {
   width: 100%; 
   display: block; 
   text-align: left;
+}
+
+.editable {
+  border: 1px solid #ccc;
+  padding-left: 18px;
+  padding-right: 18px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  background-color: #ffffff;
+  border-radius: 10px;
+  margin-left: 10px;
+  margin-right: 10px;
+  min-height: 35px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.editable ::v-deep(p) {
+  text-indent: 0pt !important;
+  margin-bottom: 0px !important;
+}
+
+.drag-overlay {
+  position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgb(255 255 255 / 88%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.5em;
+    color: #333;
+    font-weight: bold;
+    width: 100%;
+    height: 100%;
+    border-radius: 10px;
+    z-index: 1000;
+    border: 3px dashed #0d6efd;
 }
 </style> 

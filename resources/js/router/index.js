@@ -5,6 +5,8 @@ import Chat from '../components/Chat.vue'
 import Principal from '../components/Principal.vue'
 import Grupos from '../components/Grupos.vue'
 import { baseUrl } from '../baseUrl';
+import OlvideContrasena from '../components/olvideContrasena.vue';
+import soloChat from '../components/soloChat.vue';
 
 const routes = [
   {
@@ -24,6 +26,12 @@ const routes = [
     meta: { requiresAuth: false }
   },
   {
+    path: '/olvide-contrasena',
+    name: 'OlvideContrasena',
+    component: OlvideContrasena,
+    meta: { requiresAuth: false }
+  },
+  {
     path: '/principal',
     name: 'Principal',
     component: Principal,
@@ -39,7 +47,12 @@ const routes = [
         component: Grupos
       }
     ]
-  }
+  },
+  {
+    path: '/chat-redireccionado-workboard/:id_mio?/:id_amigo?',
+    name: 'chat-redireccionado-workboard',
+    component: soloChat,
+  },
 ]
 
 const router = createRouter({

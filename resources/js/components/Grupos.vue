@@ -51,26 +51,29 @@
                         :class="{'active': groupSelected?.id === group.id}"
                         @click="selectGroup(group) ; mostrarChatContainer()"
                     >
-                        <div class="d-flex align-items-center elemento">
-                            <div class="ms-3" style="width: calc(100% - 1.5rem); position: relative;">
+                        <div class="d-flex align-items-center elemento" style="z-index: 1;">
+                            <div class="ms-2" style="width: calc(100% - 1.2rem); position: relative;">
                                 <small style="font-size: 12px; position: absolute; top: -1px; right: -8px;" class="mb-2 badge bg-warning text-dark"><i class="bi bi-people-fill"></i> {{ group.participantes }}</small>
+                                <small @click="editarGrupo(group)" v-if="group.es_admin" style="font-size: 12px; position: absolute; top: -1px; right: 36px; z-index: 2;" class="mb-2 badge bg-primary"><i class="bi bi-pencil-square"></i></small>
                                 <h6 class="mb-1">
                                     {{ group.detalle_grupo.nombre }} 
-                                </h6>
-                                <div v-if="group.ultimo_mensaje != null" class="ultimo_mensaje_grupo">
-                                    <small class="text-muted" style="font-size: 10px; font-weight: bold;">
-                                        Último mensaje <br>
+                                    <br>
+                                    <small class="text-muted" style="font-size: 10px; font-weight: 900;">
+                                        Creado el {{ group.detalle_grupo.fecha }} a las {{ group.detalle_grupo.hora }} 
                                     </small>
+                                </h6>
+                                <small class="text-muted" style="color: #3253ff !important; font-size: 14px; font-weight: bold;">
+                                    Último mensaje
+                                </small>
+                                <div v-if="group.ultimo_mensaje != null" class="ultimo_mensaje_grupo">
                                     <p class="mb-0" style="font-size: 10px;">
-                                        <span style="font-weight: bold;">{{ group.ultimo_mensaje.nombre_usuario }}: </span> {{ group.ultimo_mensaje.mensaje }}    
+                                        <span style="font-weight: bold; color: #000 !important;">{{ group.ultimo_mensaje.nombre_usuario }}: </span> <p v-html="group.ultimo_mensaje.mensaje" class="mb-1 texto_en_html"></p>   
                                     </p>
-                                    <p style="font-size: 8px; margin: 0px; margin-top: 3px; font-weight: bold;">
+                                    <p style="width: 100%; text-align: right; font-size: 9px !important; margin: 0px; margin-top: 3px; margin-bottom: 3px; font-weight: bold;">
                                         {{ group.ultimo_mensaje.fecha }} A las {{ group.ultimo_mensaje.hora }}
                                     </p>
                                 </div>
-                                <small class="text-muted" style="font-size: 10px; font-weight: 900;">
-                                    Creado el {{ group.detalle_grupo.fecha }} a las {{ group.detalle_grupo.hora }} 
-                                </small>
+                                
                             </div>
                         </div>
                     </div>
@@ -109,9 +112,17 @@
                     <!-- Área de mensajes -->
                     <div 
                         class="chat-messages p-3 overflow-auto"
-                        :style="esDispositivoMovil ? 'height: calc(100vh - 20vh); overflow-x: hidden !important;' : 'height: calc(100vh - 186px);'"
+                        :style="esDispositivoMovil ? 'height: calc(100vh - 20vh); overflow-x: hidden !important;' : 'height: calc(100vh - 118px - ' + altura_editable + 'px);'"
                         ref="messageContainer"
                     >
+                        <div 
+                            ref="dropGrupos"
+                            v-if="isDragging" class="drag-overlay"
+                            @dragover.prevent="handleDragOver"
+                            @drop="handleDrop"
+                        >
+                            Suelta los archivos que enviara al grupo aquí 📂
+                        </div>
                         <div 
                             v-for="message in messages" 
                             :key="message.id"
@@ -125,9 +136,11 @@
                                 style="background-color: white; padding: 3px;margin-left: 10px ;width: 40px; height: 40px; object-fit: cover; margin-top: 15px;"
                             >
                             <div 
+                                @dblclick="handleDoubleClick(message)"
+                                :id="'mensaje_numero_'+message.id"
                                 class="message d-inline-block p-2"
                                 :class="[
-                                message.is_mine ? 'message-mine bg-primary text-white' : 'message-other bg-white',
+                                message.is_mine ? 'message-mine bg-primary text-white p-3' : 'message-other bg-white p-3',
                                 {'rounded-bottom-end-0': message.is_mine},
                                 {'rounded-bottom-start-0': !message.is_mine}
                                 ]"
@@ -139,11 +152,16 @@
                                 <div v-else style="position: absolute; left: -25px; top: 0px; z-index: 99;">
                                     <img :src="baseUrl+'images/other.png'" style="width: 30px; height: 50px;">
                                 </div>
+
                                 <small :style="message.is_mine ? 'color: white; font-size: 10px;' : 'color: grey; font-size: 10px;'">
                                    {{ message.usuario }}
                                 </small>
-                                <p :style="message.is_mine ? 'color: white;' : 'color: black;'" class="mb-1">{{ message.mensaje }}</p>
-                                
+
+                                <div @click="scrollToDiv(message.id_mensaje_responde)" v-if="message.id_mensaje_responde != 0" :class="message.is_mine ? 'mensaje-respondiendo' : 'mensaje-respondiendo-other'">
+                                    <p :style="message.is_mine ? 'color: white; font-size: 13px; font-style: italic;' : 'color: black; font-size: 13px; font-style: italic;'" class="mb-1 texto_en_html">En respuesta a:</p>
+                                    <p :style="message.is_mine ? 'color: white; font-size: 13px;' : 'color: black; font-size: 13px;'" class="mb-1 texto_en_html" v-html="message.mensaje_responde"></p>
+                                </div>
+
                                 <!-- Modificar vista previa del archivo -->
                                 <div v-if="message.tiene_archivo === 1" class="file-preview mb-2">
                                     <div 
@@ -153,13 +171,17 @@
                                     >
                                         <i class="bi bi-file-earmark me-2" style="font-size: 1.5rem;"></i>
                                         <div class="file-info">
-                                        <div :class="message.is_mine ? 'text-white' : 'text-dark'">{{ message.archivo }}</div>
+                                        <div :class="message.is_mine ? 'text-white' : 'text-dark'">
+                                            {{ message.mensaje }}
+                                            <small :class="message.is_mine ? 'text-white-50' : 'text-muted'"> - {{ message.peso }} <br></small>
+                                        </div>
                                         <small :class="message.is_mine ? 'text-white-50' : 'text-muted'">Clic para ver</small>
                                         </div>
                                     </div>
                                 </div>
-
-                                <small v-if="message.tiene_archivo === 1" :class="message.is_mine ? 'text-white-50 peso_derecha' : 'text-muted peso_izquierda'">Peso: {{ message.peso }} <br></small>
+                                
+                                <p v-else :class="message.is_mine ? 'text-white texto_en_html' : 'text-dark texto_en_html'" v-html="message.mensaje"></p>
+                                
 
                                 <small :class="message.is_mine ? 'text-white-50' : 'text-muted'" style="font-size: 10px;">
                                 {{ message.fecha }} A las {{ message.hora }}
@@ -170,21 +192,33 @@
                                 </small>
                             </div>
                         </div>
+                        <div class="respondiendo" style="position: sticky;bottom: 0px;z-index: 44444;" v-if="estado_respondiendo ==  1">
+                            <button class="btn btn-light rounded-circle" style="position: absolute; right: 10px; top: 10px;" @click="estado_respondiendo = 0; message_respondiendo = null;">
+                                <i style="color: #5437fd !important;" class="bi bi-x-lg"></i>
+                            </button>
+                            <p>Respondiendo el mensaje de <span style="font-weight: bold;">{{ message_respondiendo.usuario }}</span></p>
+                            <p class="mensaje_respondiendo" v-html="message_respondiendo.mensaje"></p>
+                        </div>
                     </div>
                     <!-- Área de entrada de mensaje -->
                     <div v-if="groupSelected?.estado == 1" class="chat-input p-3" style="background-color: #f1ede6 !important;">
-                        <div class="input-group">
+                        <div class="input-group" style="align-items: center;">
                         <button style="padding: 0px !important; border-color: #f1ede6 !important; background-color: #f1ede6 !important;" class="btn btn-light" @click="openFileExplorer">
                             <i class="bi bi-plus-lg" style="color: grey; font-size: 1.5rem;"></i>
                         </button>
-                        <form autocomplete="off" @submit.prevent="guardarMensaje('texto')" :style="!esDispositivoMovil ? 'flex-grow: 1;' : 'flex-grow: 0; width: 72%; margin-right: 10px;'">
-                            <input
+                        <form 
+                            @submit.prevent="guardarMensaje('texto')"
+                            @keydown.enter.exact.prevent="guardarMensaje('texto')"
+                            autocomplete="off" 
+                            :style="esDispositivoMovil ? 'flex-grow: 0; width: 72%; margin-right: 10px;' : 'flex-grow: 1; width: 93%;'">
+                            <div contenteditable="true" @input="updateText" ref="editableDiv" class="editable"></div>
+                            <!-- <input
                                 style="border: 1px solid #c3c3c3; width: 98%;"
                                 type="text" 
                                 class="form-control mx-2" 
                                 placeholder="Escribe un mensaje..."
                                 v-model="newMessage"
-                            >
+                            > -->
                         </form>
                         <button 
                             class="btn btn-primary rounded-circle"
@@ -273,6 +307,7 @@
       ref="fileInputII" 
       class="d-none" 
       @change="handleFileSelected" 
+      multiple
     >
 
     <!-- Modal de vista previa del archivo -->
@@ -427,6 +462,30 @@
             </div>
         </div>
     </div>
+
+
+     <!-- Modal Bootstrap para archivos arrastrados-->
+     <div class="modal fade" id="fileModalCopy" tabindex="-1" aria-labelledby="fileModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="fileModalLabel">Archivos Cargados</h5>
+          </div>
+          <div class="modal-body">
+            <ul class="list-group">
+              <li v-for="(file, index) in files" :key="index" class="list-group-item d-flex justify-content-between align-items-center">
+                {{ file.name }} ({{ formatSize(file.size) }})
+                <button class="btn btn-light btn-sm" @click="removeFile(index)">❌</button>
+              </li>
+            </ul>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-danger" @click="files = []" data-bs-dismiss="modal">Cancelar <i class="bi bi-x"></i></button>
+            <button type="button" class="btn btn-success" @click="sendFiles">Enviar <i class="bi bi-send"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
 </template>
 <script>
 import { userService, grupoService } from '../services/api' 
@@ -467,6 +526,12 @@ export default {
             baseUrl: baseUrl,
             isLoading: false,
             esDispositivoMovil: false,
+            erroresArchivo: [],
+            altura_editable: 78,
+            isDragging: false,
+            files: [],
+            estado_respondiendo: 0,
+            message_respondiendo: null,
         }
     },
     async mounted() {
@@ -483,6 +548,24 @@ export default {
                 return new bootstrap.Tooltip(tooltipTriggerEl);
             });
         }
+
+        window.addEventListener("dragenter", this.handleWindowDragEnter);
+        window.addEventListener("dragleave", this.handleWindowDragLeave);
+        window.addEventListener("dragover", (event) => event.preventDefault());
+        window.addEventListener("drop", (event) => {
+        this.isDragging = false;
+        event.preventDefault(); // Previene la apertura del archivo en otra pestaña
+        });
+    },
+    beforeUnmount() {
+        this.stopAutoUpdate();
+        window.removeEventListener("dragenter", this.handleWindowDragEnter);
+        window.removeEventListener("dragleave", this.handleWindowDragLeave);
+        window.removeEventListener("dragover", (event) => event.preventDefault());
+        window.removeEventListener("drop", (event) => {
+            this.isDragging = false;
+            event.preventDefault(); // Previene la apertura del archivo en otra pestaña
+        });
     },
     methods: {
         verificarLogin() {
@@ -583,70 +666,118 @@ export default {
             console.log(event);
             const files = event.target.files;
             if (files.length > 0) {
-                console.log(files);
+                this.isLoading = true;
                 const maxFileSize = 100 * 1024 * 1024;
-                if (files[0].size > maxFileSize) {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Archivo demasiado grande',
-                        text: 'El archivo no debe pesar más de 100 MB',
-                        showConfirmButton: false,
-                        timer: 2500
-                    });
-                    this.$refs.fileInputII.value = '';
-                    return;
+                for(var i = 0; i < files.length; i++){
+                    if (files[i].size > maxFileSize) {
+                        this.erroresArchivo.push('<li style="color: red;">'+ files[i].name + ' es demasiado grande, el tamaño máximo es de 100 MB</li>');
+                    }else{
+                        this.archivo = files[i];
+                        await this.guardarMensajeArchivo('archivo', this.archivo);
+                    }
                 }
-                this.archivo = files[0];
-                await this.guardarMensaje('archivo');
+
+                var mensaje_swal = '<ul>';
+                for(var i = 0; i < this.erroresArchivo.length; i++){
+                    mensaje_swal += this.erroresArchivo[i];
+                }
+                mensaje_swal += '</ul>';
+                Swal.fire({ 
+                    icon: 'warning',
+                    title: 'Atención',
+                    html: mensaje_swal,
+                    showConfirmButton: true, 
+                    confirmButtonText: 'Cerrar',
+                    confirmButtonColor: '#3085d6',
+                });
+
+                this.isLoading = false;
+                this.erroresArchivo = [];
                 this.$refs.fileInputII.value = '';
+                this.estado_respondiendo = 0;
+                this.message_respondiendo = null;
+                await this.loadMessages();
+                this.$nextTick(() => {
+                    this.scrollToBottom();
+                });
+            }
+        },
+        async guardarMensajeArchivo(tipo, archivo) {
+            const id_mio = localStorage.getItem('id_mio');
+            const id_grupo = localStorage.getItem('id_grupo');
+            const mensaje = this.newMessage;
+            
+            try {
+                if(this.estado_respondiendo == 0){
+                let response = await grupoService.guardarMensaje(id_mio, id_grupo, mensaje, tipo, this.archivo);
+                    if (!response.success) {
+                        this.erroresArchivo.push('<li style="color: red;">'+response.message+'</li>');
+                    }else{
+                        this.erroresArchivo.push('<li style="color: green;">'+archivo.name+' subido correctamente</li>');
+                    }
+                }else{
+                    let response = await grupoService.guardarMensajeRespondiendo(id_mio, id_grupo, mensaje, tipo, this.archivo, this.message_respondiendo.usuario, this.message_respondiendo.mensaje, this.message_respondiendo.id);
+                    if (!response.success) {
+                        this.erroresArchivo.push('<li style="color: red;">'+response.message+'</li>');
+                    }else{
+                        this.erroresArchivo.push('<li style="color: green;">'+archivo.name+' subido correctamente</li>');
+                    }
+                }
+            } catch (error) {
+                this.erroresArchivo.push(error.response.statusText == 'Content Too Large' ? '<li style="color: red;">El archivo '+this.archivo.name+' es demasiado grande</li>' : '<li style="color: red;">'+error.response.statusText+'</li>');
             }
         },
         async guardarMensaje(tipo) {
             const id_mio = localStorage.getItem('id_mio');
             const id_grupo = localStorage.getItem('id_grupo');
-            const mensaje = this.newMessage;
-            let response;
-            if (tipo == 'archivo') {
-                this.isLoading = true;
-                try {
-                    response = await grupoService.guardarMensaje(id_mio, id_grupo, mensaje, tipo, this.archivo);
+            const vacio = this.$refs.editableDiv.textContent.trim();
+            if(vacio != ''){
+                var mensaje = this.newMessage;
+
+                if(this.estado_respondiendo == 0){
+                    let response = await grupoService.guardarMensaje(id_mio, id_grupo, mensaje, tipo, null);
                     if (response.success) {
-                        this.isLoading = false;
+                        this.newMessage = '';
+                        this.$refs.editableDiv.innerHTML = '';
+                        this.altura_editable = 78;
+                        await this.loadMessages();
+                        this.$nextTick(() => {
+                            this.scrollToBottom();
+                        });
                     } else {
-                        this.isLoading = false;
+                        Swal.fire({
+                        icon: 'error',
+                        title: 'Oops...',
+                        text: response.message
+                        });
+                    }
+                }else{
+                    let response = await grupoService.guardarMensajeRespondiendo(id_mio, id_grupo, mensaje, tipo, null, this.message_respondiendo.usuario, this.message_respondiendo.mensaje, this.message_respondiendo.id);
+                    if (response.success) {
+                        this.newMessage = '';
+                        this.$refs.editableDiv.innerHTML = '';
+                        this.altura_editable = 78;
+                        this.estado_respondiendo = 0;
+                        this.message_respondiendo = null;
+                        await this.loadMessages();
+                        this.$nextTick(() => {
+                            this.scrollToBottom();
+                        });
+                    }else{
                         Swal.fire({
                             icon: 'error',
                             title: 'Oops...',
-                            text: response.message,
-                            showConfirmButton: false,
-                            timer: 1500
+                            text: response.message
                         });
                     }
-                } catch (error) {
-                    this.isLoading = false;
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Oops...',
-                        text: error.response.statusText == 'Content Too Large' ? 'El archivo es demasiado grande' : error.response.statusText,
-                        showConfirmButton: false,
-                        timer: 2500
-                    });
                 }
-            } else {
-                response = await grupoService.guardarMensaje(id_mio, id_grupo, mensaje, tipo, null);
-            }
-            
-            if (response.success) {
-                this.newMessage = '';
-                await this.loadMessages();
-                this.$nextTick(() => {
-                    this.scrollToBottom();
-                });
-            } else {
+            }else{
                 Swal.fire({
-                icon: 'error',
-                title: 'Oops...',
-                text: response.message
+                    icon: 'error',
+                    title: 'Oops...',
+                    text: 'No se puede enviar un mensaje vacío',
+                    showConfirmButton: false,
+                    timer: 2500
                 });
             }
         },
@@ -789,9 +920,121 @@ export default {
                 this.$refs.listaContactosContainer.style.display = 'block';
             }
         },
-    },
-    beforeUnmount() {
-        this.stopAutoUpdate();
+        editarGrupo(group) {
+            Swal.fire({
+            title: "cambiar Nombre del grupo",
+            input: "text",
+            inputValue: group.detalle_grupo.nombre,
+            inputAttributes: {
+                autocapitalize: "off"
+            },
+            showCancelButton: true,
+            confirmButtonText: "Editar",
+            cancelButtonText: "Cancelar",
+            showLoaderOnConfirm: true,
+            preConfirm: async (nombre) => {
+                await grupoService.editarGrupo(group.id_grupo, nombre);
+                await this.loadGroups();
+                const grupo = this.groups.find(group => group.id_grupo == group.id_grupo);
+                this.groupSelected = grupo;
+            },
+            allowOutsideClick: () => !Swal.isLoading()
+            }).then((result) => {
+                console.log(result);
+            });
+        },
+        updateText(event) {
+            this.altura_editable = this.$refs.editableDiv.offsetHeight + 32;
+            this.newMessage = event.target.innerHTML;
+        },
+        handleWindowDragEnter(event) {
+        if (event.dataTransfer.types.includes("Files")) {
+            this.isDragging = true;
+        }
+        },
+        handleWindowDragLeave(event) {
+        if (event.clientY <= 0 || event.clientX <= 0 || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight) {
+            this.isDragging = false;
+        }
+        },
+        handleDragOver(event) {
+        event.preventDefault();
+        },
+        handleDrop(event) {
+            event.preventDefault();
+            this.isDragging = false;
+
+            if (!this.$refs.dropGrupos || !this.$refs.dropGrupos.contains(event.target)) {
+                alert('No se puede enviar archivos fuera del chat');
+                return;
+            }
+
+            const droppedFiles = Array.from(event.dataTransfer.files);
+            this.files = [...this.files, ...droppedFiles];
+
+            const modal = new bootstrap.Modal(document.getElementById('fileModalCopy'));
+            modal.show();
+        },
+        removeFile(index) {
+        this.files.splice(index, 1);
+        },
+        formatSize(size) {
+        return (size / 1024).toFixed(2) + " KB";
+        },
+        async sendFiles() {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('fileModalCopy'));
+            modal.hide();
+            const files = this.files;
+            if (files.length > 0) {
+                this.isLoading = true;
+                const maxFileSize = 100 * 1024 * 1024;
+                for(var i = 0; i < files.length; i++){
+                if (files[i].size > maxFileSize) {
+                    this.erroresArchivo.push('<li style="color: red;">'+ files[i].name+' es demasiado grande, el tamaño máximo es de 100 MB</li>');
+                }else{
+                    this.archivo = files[i];
+                    await this.guardarMensajeArchivo('archivo', this.archivo);
+                }
+                }
+
+                var mensaje_swal = '<ul>';
+                for(var i = 0; i < this.erroresArchivo.length; i++){
+                mensaje_swal += this.erroresArchivo[i];
+                }
+                mensaje_swal += '</ul>';
+
+                Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                html: mensaje_swal,
+                showConfirmButton: true, 
+                confirmButtonText: 'Cerrar',
+                confirmButtonColor: '#3085d6',
+                });
+
+                this.isLoading = false;
+                this.erroresArchivo = [];
+                this.files = [];
+                await this.loadMessages();
+                this.$nextTick(() => {
+                    this.scrollToBottom();
+                });
+            }
+        },
+        handleDoubleClick(message) {
+            this.estado_respondiendo = 1;
+            this.message_respondiendo = message;
+        },
+        async scrollToDiv(id_mensaje) {
+            await this.$nextTick(); // Asegurar que el DOM está actualizado
+            const element = document.getElementById(`mensaje_numero_${id_mensaje}`);
+            console.log(element);
+            if (element) {
+                element.scrollIntoView({ behavior: "smooth", block: "center" });
+            } else {
+                console.warn("No se encontró el mensaje con ID:", id);
+            }
+        }
     }
 }
 </script>
@@ -825,13 +1068,50 @@ export default {
 
 .message-mine {
     border-radius: 15px 0px 15px 15px !important;
-    background: linear-gradient(135deg, #007bff, #0056b3);
+    background: linear-gradient(to right, #007bff, #0061ca);
 }
+
+.message-mine .texto_en_html ::v-deep(p){
+  margin-bottom: 0px !important;
+  color: white !important;
+  font-size: 14px !important;
+  text-align: left !important;
+  text-indent: 0pt !important;
+}
+
+.texto_en_html ::v-deep(p){
+  margin-bottom: 0px !important;
+}
+
+.message-mine .texto_en_html ::v-deep(span){
+  color: white !important;
+}
+
+.message-mine .texto_en_html ::v-deep(strong){
+  color: white !important;
+}
+
 
 .message-other {
     border-radius: 0px 15px 15px 15px !important;
     background-color: rgb(170, 198, 252);
     border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.message-other .texto_en_html ::v-deep(p){
+  margin-bottom: 0px !important;
+  color: rgb(54, 54, 54) !important;
+  font-size: 14px !important;
+  text-align: left !important;
+  text-indent: 0pt !important;
+}
+
+.message-other .texto_en_html ::v-deep(span){
+  color: rgb(54, 54, 54) !important;
+}
+
+.message-other .texto_en_html ::v-deep(strong){
+  color: rgb(54, 54, 54) !important;
 }
 
 /* Estilizar scrollbar */
@@ -951,25 +1231,13 @@ export default {
   border: 1px solid #333 !important;
 }
 
-.peso_derecha {
-  width: 100%; 
-  display: block; 
-  text-align: right;
-}
-
-.peso_izquierda {
-  width: 100%; 
-  display: block; 
-  text-align: left;
-}
-
 .ultimo_mensaje_grupo {
     border-radius: 10px;
     background-color: #fefeff;
     padding: 10px;
     display: flex;
     flex-direction: column;
-    margin-top: 12px;
+    margin-top: 6px;
     margin-bottom: 6px;
 }
 
@@ -982,4 +1250,104 @@ export default {
     -webkit-box-orient: vertical;     /* Define la orientación vertical */
     line-height: 1.5em;   
 }
+
+.ultimo_mensaje_grupo ::v-deep(p), .ultimo_mensaje_grupo ::v-deep(span), .ultimo_mensaje_grupo ::v-deep(strong){
+  font-size: 12px !important;
+  color: #6c757d !important;
+}
+
+.editable {
+  border: 1px solid #ccc;
+  padding-left: 18px;
+  padding-right: 18px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  background-color: #ffffff;
+  border-radius: 10px;
+  margin-left: 10px;
+  margin-right: 10px;
+  min-height: 35px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.editable ::v-deep(p) {
+  text-indent: 0pt !important;
+  margin-bottom: 0px !important;
+}
+
+.drag-overlay {
+  position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgb(255 255 255 / 88%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.5em;
+    color: #333;
+    font-weight: bold;
+    width: 100%;
+    height: 100%;
+    border-radius: 10px;
+    z-index: 1000;
+    border: 3px dashed #0d6efd;
+}
+
+.respondiendo{
+    margin: 10px;
+    border-radius: 10px;
+    border-left: 4px solid #674cff;
+    padding: 15px;
+    background-color: #ecdcff;
+    width: 98%;
+    overflow-x: hidden;
+    color: #5437fd !important;
+    box-shadow: 0 0 10px 0 #f9ecff;
+    cursor: pointer;
+}
+
+.mensaje_respondiendo{
+    width: 100%;    
+    padding: 10px;        
+    border: 1px solid #aa87fd;
+    border-radius: 10px;
+}
+
+.mensaje-respondiendo {
+    margin-top: 10px;
+    margin-bottom: 10px;
+    border-radius: 10px;
+    border-left: 4px solid #674cff;
+    padding: 15px;
+    background-color: #26074960;
+    overflow-x: hidden;
+    color: #5437fd !important;
+    cursor: pointer;
+    transition: all 0.2s ease;  
+}
+
+.mensaje-respondiendo:hover{
+    transform: scale(1.06);
+}
+
+.mensaje-respondiendo-other {
+    margin-top: 10px;
+    margin-bottom: 10px;
+    border-radius: 10px;
+    border-left: 4px solid #b5a8ff;
+    padding: 15px;
+    background-color: #d3acff60;
+    overflow-x: hidden;
+    color: #5437fd !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.mensaje-respondiendo-other:hover{
+    transform: scale(1.06);
+}
+
 </style>

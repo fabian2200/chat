@@ -65,6 +65,8 @@ class AuthController extends Controller
         ]);
     }
 
+    si me econtraste eres gay
+
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();

@@ -54,7 +54,7 @@
             >
             <label class="form-check-label" for="remember">Recordarme</label>
           </div>
-          <a href="#" class="forgot-password">¿Olvidaste tu contraseña?</a>
+          <router-link to="/olvide-contrasena" class="forgot-password">¿Olvidaste tu contraseña?</router-link>
         </div>
 
         <div v-if="error" class="alert alert-danger">

@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use App\Http\Controllers\EmailController;
 
 class UserController extends Controller
 {
@@ -431,5 +433,28 @@ class UserController extends Controller
         $id = $request->id;
         $user = DB::table('users')->where('id', $id)->first();
         return response()->json($user);
+    }
+
+    public function recuperarContrasena(Request $request)
+    {
+        $email = $request->email;
+        $user = DB::table('users')->where('email', $email)->first();
+        if($user){
+            $password = Str::random(10);
+            $password_plain = $password;
+            $password = Hash::make($password);
+            DB::table('users')->where('id', $user->id)->update(['password' => $password]);
+            $emailController = new EmailController();
+            $emailController->enviarCorreo($password_plain, $email, $user->name);
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Contraseña recuperada exitosamente, se ha enviado un correo a tu cuenta para recuperar tu contraseña'
+            ], 200);
+        }else{
+            return response()->json([
+                'status' => 'error',
+                'message' => 'El correo electrónico no está registrado'
+            ], 404);
+        }
     }
 } 
